@@ -1,0 +1,149 @@
+---
+title: "Analysis of College Basketball Statistics and NBA Success Prediction"
+author: "John Ajit, Nathan Dorsey, Ben Kim"
+output: pdf_document
+fontsize: 11pt
+header-includes:
+- \usepackage{caption}
+- \captionsetup[figure]{labelformat=empty}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  comment = "#", 
+  cache = FALSE,  
+  collapse = TRUE,
+  error = TRUE,
+  tidy.opts=list(width.cutoff=65)
+)
+```
+
+```{r set up data, echo=FALSE, message=FALSE, warning=FALSE}
+#bring in library dplyr
+library(dplyr)
+
+#read csv files and bring out columns which will get in the way of the rbind function
+NBA1 <- read.csv("NBA_Player_Stats.csv")
+NBA2 <- read.csv("NBA_Player_Stats_2.csv")
+WS <- read.csv("win_share.csv")
+NBA2$MVP <- NULL
+names(NBA2)[names(NBA2) == "Season"] <- "Year"
+
+#rbind and concatenate to only necessary stats (NBA)
+rawNBA <- rbind(NBA1, NBA2)
+NBAcon <- rawNBA[,-c(0, 1, 4, 5, 6, 7, 8, 9, 10,12,13, 15, 16, 17, 18, 19, 20, 22, 23, 31)]
+
+#averaging the stats into one column by player name
+NBAstat <- NBAcon %>%
+  group_by(Player) %>%
+  summarize(
+    Pos = last(Pos),
+    across(where(is.numeric), ~ round(mean(., na.rm = TRUE), 3)),
+    .groups = "drop"
+  )
+
+
+
+#read in csv for college stats
+
+colcon <- read.csv('COLLEGEstat.csv')
+colnames(colcon)[colnames(colcon) == "WS"] <- "win_share"
+colcon <- colcon[order(colcon$Player), ]
+colcon <- colcon[ , !names(colcon) %in% "Column_Name", drop = FALSE]
+rownames(colcon) <- NULL
+
+
+
+#Getting rid of players not in both of datasets
+common_players <- inner_join(NBAstat, colcon, by = "Player") %>% 
+  select(Player)
+
+# Filter both datasets to include only common players
+NBAstat <- NBAstat %>% 
+  semi_join(common_players, by = "Player")
+
+colcon <- colcon %>% 
+  semi_join(common_players, by = "Player")
+
+NBAstat<- cbind(NBAstat,WS)
+
+
+# Add formula (PER) as a column so it is a stat for each player
+# Changing this when I get updated data
+colcon$PER <- (1.35 * as.numeric(colcon$PTS)) + (0.6* as.numeric(colcon$TRB)) + (0.9*as.numeric(colcon$AST) + (.45*as.numeric(colcon$STL)) + (.3*as.numeric(colcon$BLK)) - (.6*as.numeric(colcon$TOV)))
+
+NBAstat$PER <- (1.35 * as.numeric(NBAstat$PTS)) + (0.6* as.numeric(NBAstat$TRB)) + (0.9*as.numeric(NBAstat$AST) + (.45*as.numeric(NBAstat$STL)) + (.3*as.numeric(NBAstat$BLK)) - (.6*as.numeric(NBAstat$TOV)))
+```
+
+## Abstract
+
+This report aims to analyze college basketball statistics to predict success in the NBA, in order to determine whether a player is a success, a "bust", or somewhere in between. We developed a performance metric based on points, rebounds, assists, steals, blocks, and turnovers, a metric which we've called Player Performance Rating (PPR) and compared it with Win Share statistics for various college basketball players. We then applied the same metric to those same players, but instead evaluated their NBA performance. The findings are expected to offer insights into the predictive value of college performance for NBA success. 
+
+## Introduction
+
+The world of professional basketball is highly competitive, with college basketball serving as a key talent pool for the NBA. Understanding the correlation between a player's college performance and their subsequent NBA success is vital for scouts and teams. This study introduces a new metric based on college stats which attempts to evaluate this correlation.
+
+## Methods
+
+The analysis involved collecting and processing data from two primary sources: college basketball player statistics and NBA player statistics. Data was cleaned, transformed, and merged to facilitate a comparative analysis. The PPR metric was calculated for each player, and a linear regression model was used to evaluate the relationship between PPR and Win Share. We then compared a smaller sample size of a more specific group of players with a performance rating between a certain range in order to further explore the correlation. 
+
+## Results
+
+The analysis focused on comparing the Player Performance Rating (PPR) with Win Share (WS) for college basketball players and examining how these metrics correlate with their performance in the NBA.   
+
+### College Basketball Players' Performance   
+
+The scatter plot below shows the relationship between PPR and WS for college basketball players. A linear regression line (in red) indicates the trend.
+
+```{r plot college stats, echo=FALSE, message=FALSE, warning=FALSE}
+plot(colcon$PER, colcon$win_share, main="Player Performance Rating vs. Win Share in College", xlab="PPR", ylab="Win Share", pch=19, col="darkblue")
+m_college <- lm(win_share ~ PER, data=colcon)
+abline(m_college, col='red')
+```
+
+As expected, we found positive correlation between PPR and Win Share among college players, although the correlation is somewhat weaker than we had predicted. We believe there are a couple reasons for this: firstly, win share is a cumulative metric, meaning it is likely to increase as a player plays more games. Players simply have less games in college to allow them to raise this metric. Secondly, college basketball teams are often built around systems and can tend to involve more "role player" types, taking an emphasis off of individual player statistics as it relates to overall team performance. 
+
+### NBA Players' Performance   
+This scatterplot below shows the same metrics among the same players, but for all of their NBA stats. 
+
+``` {r plot NBA stats, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NBAstat$PER, NBAstat$win_share, main="Player Performance Rating vs. Win Share in the NBA", xlab="PPR", ylab="Win Share", pch=19, col="darkblue")
+m_NBA <- lm(win_share ~ PER, data=NBAstat)
+abline(m_NBA, col='red')
+```
+
+The NBA, in contrast to collegiate basketball, has a significantly stronger correlation between our performance metric and Win Share, for the same reasons that it was weaker in the college data; that is, that there are more games to be played, and individual performance can have a larger impact on a team's overall performance, due to the level of skill being higher as well as the style of play being vastly different from each other at the two levels of play. 
+
+
+### Case Study and Further Exploration
+Although we did find correlation between our performance metric and success at the collegiate level, we wanted to explore if we could find any determining factors which might indicate stronger correlation.   
+
+First, let's look at an example. The top performer among both the collegiate and NBA data in terms of PPR is Trae Young. He boasts a collegiate PPR of 44.9 and an NBA PPR of 43.1. His collegiate win share, however, is exceptionally low compared to his performance rating, at just 5.7, because he only spent a single year playing college basketball before being drafted to the NBA, where he has earned an overall win share of 34.6.   
+
+Similarly, many other all-stars with exceptionally high performance ratings and win shares in the NBA have low win shares in college, mostly due to their short time spent playing college basketball. Such other examples include Joel Embiid, Karl Anthony-Towns, Donovan Mitchell, and others.     
+
+Below is a graph of the performance rating of the top performers from college against their NBA performance ratings. As we can see, when we isolate many of the top performers, we can see that, although many of these players still have a relatively low collegiate win share, which is again due to the lack of time spent in college. However, we can see that, among top performers, in particular with performance ratings above around 30, there does exist a much stronger correlation. 
+
+```{r plot top performers, echo=FALSE, message=FALSE, warning=FALSE}
+newColcon <- colcon[colcon$PER > 32, ]
+newNBAstat <- NBAstat[NBAstat$Player %in% newColcon$Player, ]
+newNBAstat <- subset(newNBAstat, select=-Pos)
+
+plot(newColcon$PER, newNBAstat$PER, main="College Performance vs. NBA Performance",
+     xlab="College Performance", ylab="NBA Performance",
+     pch=19, col='darkblue')
+
+m_trivial <- lm(newNBAstat$PER ~ newColcon$PER)
+abline(m_trivial, col='red')
+```
+
+Looking at this much smaller sample group, predicting NBA successes is somewhat consistent, as long as one considers the larger picture. However, it may be noted that there still exist some busts, players with high collegiate performance ratings and low NBA performance ratings. Take Oakland alum Kay Felder, for example. He's the dot on the far lower-right corner of the graph, performing in college with a rating of 42.8, but only managing to hold a 5.5 rating in the NBA. This, and other cases like his, are due to factors such as competition (or lack thereof) in college, physical measures like height, role/team fit, and skill set fit. This accounts for many college students to excel at the college level, but struggle at the next level. In turn, this makes predicting busts significantly more difficult, seeing as it is easier to maintain a respectable collegiate performance rating that might not transfer over to success in the NBA.
+
+
+## Discussion
+
+We found that, while in some cases, college performance statistics can give good insight into how a player might perform in the NBA, it is vital when evaluating college talent pools for potential NBA prospects to take into account more variables outside of the performance statistics, such as immesurables like a player's individual situation, the strength (or lack thereof) of their competition, or other factors that would make the transition to the NBA difficult for a player, like their physicality.   
+
+However, we found that success in the NBA is pretty strongly determined by and correlated to individual performance, and can be much more reliably predicted by our performance rating, as many of the factors that would throw off our predictions of success based on college statistics aren't there.  
+
+Context is important when evaluating a player's value, and when player performance is placed within a larger context, it can help provide even more value in predicting their success.  
+
